@@ -1,0 +1,73 @@
+import { asc, eq } from "drizzle-orm";
+import { db, schema } from "@/lib/db";
+import type { JobType } from "@/lib/db/schema";
+import { newId } from "@/lib/ids";
+import { prepareMedia, renderPlan, verifyRender } from "./handlers";
+import { syncChannel, synthesizeMemory } from "@/lib/youtube/sync";
+
+const MAX_ATTEMPTS = 2;
+
+type Handler = (payload: Record<string, unknown>, stage: (s: string) => Promise<void>) => Promise<Record<string, unknown>>;
+const handlers: Record<JobType, Handler> = {
+  prepare_media: (p, stage) => prepareMedia(p.assetId as string, stage),
+  render_preview: (p, stage) => renderPlan(p.renderId as string, Boolean(p.full), Number(p.verifyRound ?? 1), stage),
+  verify_render: (p, stage) => verifyRender(p.renderId as string, Number(p.round ?? 1), stage),
+  sync_channel: (p, stage) => syncChannel(Number(p.limit ?? 8), stage),
+  synthesize_memory: (_p, stage) => synthesizeMemory(stage),
+};
+
+const state = globalThis as unknown as { __rlRunner?: { running: boolean; recovered: boolean } };
+state.__rlRunner ??= { running: false, recovered: false };
+
+export async function enqueue(type: JobType, payload: Record<string, unknown>, projectId: string | null) {
+  const d = await db();
+  const [job] = await d.insert(schema.jobs).values({ id: newId("job"), type, payload, projectId }).returning();
+  void kick();
+  return job;
+}
+
+/**
+ * Processes queued jobs one at a time in this server process. Job state lives
+ * in the database, so work interrupted by a restart is re-queued and resumed.
+ */
+export async function kick(): Promise<void> {
+  const r = state.__rlRunner!;
+  if (r.running) return;
+  r.running = true;
+  try {
+    const d = await db();
+    if (!r.recovered) {
+      r.recovered = true;
+      await d.update(schema.jobs).set({ status: "queued", stage: "Resuming" }).where(eq(schema.jobs.status, "running"));
+    }
+    for (;;) {
+      const [job] = await d.select().from(schema.jobs).where(eq(schema.jobs.status, "queued")).orderBy(asc(schema.jobs.createdAt)).limit(1);
+      if (!job) break;
+      const attempts = job.attempts + 1;
+      await d.update(schema.jobs).set({ status: "running", attempts, updatedAt: new Date() }).where(eq(schema.jobs.id, job.id));
+      const stage = async (s: string) => {
+        await d.update(schema.jobs).set({ stage: s, updatedAt: new Date() }).where(eq(schema.jobs.id, job.id));
+      };
+      try {
+        const result = await handlers[job.type](job.payload, stage);
+        await d.update(schema.jobs).set({ status: "succeeded", stage: "Ready for review", result, error: null, updatedAt: new Date() }).where(eq(schema.jobs.id, job.id));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[jobs] ${job.type} ${job.id} failed:`, message);
+        const retry = attempts < MAX_ATTEMPTS;
+        await d
+          .update(schema.jobs)
+          .set({ status: retry ? "queued" : "failed", stage: retry ? "Retrying" : "Failed — retry available", error: message.slice(0, 2000), updatedAt: new Date() })
+          .where(eq(schema.jobs.id, job.id));
+      }
+    }
+  } finally {
+    r.running = false;
+  }
+}
+
+export async function retryJob(id: string) {
+  const d = await db();
+  await d.update(schema.jobs).set({ status: "queued", stage: "Queued", attempts: 0, error: null }).where(eq(schema.jobs.id, id));
+  void kick();
+}
