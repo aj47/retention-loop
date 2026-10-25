@@ -17,7 +17,7 @@ export const GET = route(async (req) => {
 });
 
 export const POST = route(async (req) => {
-  const { targetType, targetId, projectId } = await body(req, z.object({ targetType: z.enum(["render", "script"]), targetId: z.string(), projectId: z.string() }));
+  const { targetType, targetId, projectId } = await body(req, z.object({ targetType: z.enum(["render", "script", "video"]), targetId: z.string(), projectId: z.string() }));
   if (directorMode() !== "gemini") throw new HttpError(400, "The review panel needs a Gemini API key");
   return { job: await enqueue("review_panel", { targetType, targetId }, projectId) };
 });

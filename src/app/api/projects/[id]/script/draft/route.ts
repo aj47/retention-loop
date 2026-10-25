@@ -14,7 +14,7 @@ export const POST = route<Ctx>(async (req, { params }) => {
   const ctx = await directorContext(brief);
   const result = await draftScript({ brief }, ctx);
   const artifact = await getOrCreateArtifact(id, "script", "Script");
-  const version = await addVersion(artifact, { origin: "director", label: "First draft from brief", content: result.data.script, data: { notes: result.data.notes }, model: result.model });
+  const version = await addVersion(artifact, { origin: "director", label: "First draft from brief", content: result.data.script, data: { notes: result.data.notes, recordingTips: result.data.recordingTips }, model: result.model });
   await advanceStage(id, "script");
   return { version };
 });

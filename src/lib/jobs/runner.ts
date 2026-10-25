@@ -5,6 +5,7 @@ import { newId } from "@/lib/ids";
 import { prepareMedia, renderPlan, verifyRender } from "./handlers";
 import { syncChannel, synthesizeMemory } from "@/lib/youtube/sync";
 import { runPanel } from "@/lib/director/panel";
+import { scoutIdeas } from "@/lib/director/ideas";
 
 const MAX_ATTEMPTS = 2;
 
@@ -15,13 +16,14 @@ const handlers: Record<JobType, Handler> = {
   verify_render: (p, stage) => verifyRender(p.renderId as string, Number(p.round ?? 1), stage),
   sync_channel: (p, stage) => syncChannel(Number(p.limit ?? 8), stage),
   synthesize_memory: (p, stage) => synthesizeMemory(stage, Boolean(p.rewatch)),
-  review_panel: (p, stage) => runPanel(p.targetType as "render" | "script", p.targetId as string, stage),
+  scout_ideas: (_p, stage) => scoutIdeas(stage),
+  review_panel: (p, stage) => runPanel(p.targetType as "render" | "script" | "video", p.targetId as string, stage),
 };
 
 /** Jobs in different lanes run concurrently; jobs within a lane run one at a time. */
 const LANES: Record<string, JobType[]> = {
   media: ["prepare_media", "render_preview", "verify_render"],
-  channel: ["sync_channel", "synthesize_memory"],
+  channel: ["sync_channel", "synthesize_memory", "scout_ideas"],
   review: ["review_panel"],
 };
 

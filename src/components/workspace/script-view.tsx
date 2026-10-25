@@ -177,6 +177,8 @@ export function ScriptView({ bundle, reload, go }: WorkspaceProps) {
 
         <ErrorNote error={error} />
 
+        <RecordingTips versions={art.versions} />
+
         {proposal && base && rewrite ? (
           <ProposalPanel
             blocks={blocks}
@@ -515,6 +517,37 @@ function ShotList({ plan }: { plan: ShotPlan }) {
           <span className="text-right text-muted tabular-nums">~{s.estimatedSeconds}s</span>
         </div>
       ))}
+    </Card>
+  );
+}
+
+type Tip = { tip: string; why: string; lessonIds: string[] };
+
+/** Recording tips Argon wrote with the first draft, grounded in channel lessons. */
+function RecordingTips({ versions }: { versions: ArtifactVersion[] }) {
+  const [open, setOpen] = useState(false);
+  const tips = (versions.find((v) => Array.isArray(v.data.recordingTips) && (v.data.recordingTips as Tip[]).length)?.data.recordingTips ?? []) as Tip[];
+  if (!tips.length) return null;
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2">
+        <p className="font-semibold">Before you hit record</p>
+        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">from your channel lessons</span>
+        <button onClick={() => setOpen((o) => !o)} className="ml-auto text-xs font-medium text-accent hover:underline">
+          {open ? "Hide why" : "Why?"}
+        </button>
+      </div>
+      <ol className="mt-3 grid gap-2 sm:grid-cols-2">
+        {tips.map((t, i) => (
+          <li key={i} className="flex gap-2.5 rounded-md bg-paper p-2.5 text-sm">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-white">{i + 1}</span>
+            <span>
+              <span className="font-medium">{t.tip}</span>
+              {open && <span className="mt-1 block text-xs text-muted">{t.why}</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
     </Card>
   );
 }

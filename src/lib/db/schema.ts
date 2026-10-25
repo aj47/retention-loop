@@ -151,7 +151,7 @@ export const verifications = pgTable("verifications", {
 export const reviews = pgTable("reviews", {
   id: text("id").primaryKey(),
   projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
-  targetType: text("target_type").$type<"render" | "script">().notNull(),
+  targetType: text("target_type").$type<"render" | "script" | "video">().notNull(),
   targetId: text("target_id").notNull(),
   persona: text("persona").notNull(),
   status: text("status").$type<"running" | "done" | "failed">().notNull().default("running"),
@@ -226,7 +226,7 @@ export type ReviewStatus = "proposed" | "accepted" | "rejected";
 export type LessonStatus = "observation" | "hypothesis" | "experimentally_supported" | "inconclusive" | "outdated";
 export type EvidenceStrength = "weak" | "moderate" | "strong";
 export type EvidenceLabel = "observed" | "hypothesis" | "historically_associated" | "experimentally_supported" | "inconclusive";
-export type JobType = "prepare_media" | "render_preview" | "verify_render" | "sync_channel" | "synthesize_memory" | "review_panel";
+export type JobType = "prepare_media" | "render_preview" | "verify_render" | "sync_channel" | "synthesize_memory" | "review_panel" | "scout_ideas";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface ChannelIdentity {

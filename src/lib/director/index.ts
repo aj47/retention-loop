@@ -94,7 +94,9 @@ export async function draftScript(input: { brief: string }, ctx: DirectorContext
 ${input.brief}
 </creative_brief>
 
-Write a first-draft spoken script that follows this brief. Write in the creator's voice as described by the channel profile, mark places that need real footage or results with [bracketed notes] instead of inventing outcomes, and keep each paragraph to one beat.`;
+Write a first-draft spoken script that follows this brief. Write in the creator's voice as described by the channel profile, mark places that need real footage or results with [bracketed notes] instead of inventing outcomes, and keep each paragraph to one beat.
+
+Then give recording tips for this specific video: what to capture, what to set up off camera, and what to avoid on screen, each tied to what this channel's retention history shows.`;
   const r = await structured({ schema: DraftSchema, system: SYSTEM, input: prompt, thinking: "high" });
   return { data: r.data, model: r.model };
 }

@@ -7,7 +7,8 @@ import { sourceToOutput } from "@/lib/edit/timeline";
 import { newId } from "@/lib/ids";
 import { renderPath } from "@/lib/jobs/handlers";
 import { formatChannelForPrompt, formatLessonsForPrompt, getChannel, listLessons } from "@/lib/memory/lessons";
-import { fileFrame } from "@/lib/youtube/frames";
+import { fileFrame, youtubeFrame } from "@/lib/youtube/frames";
+import { analyzeRetention } from "@/lib/analytics/retention";
 import { ARGON, gemini, structured } from "./model";
 
 /** Antigravity managed agent; each reviewer is a saved agent pinned to Gemini 4 Argon. */
@@ -141,6 +142,32 @@ async function renderMaterial(renderId: string): Promise<{ parts: Part[]; contex
   return { parts, context, projectId: plan.projectId };
 }
 
+/** A published video: storyboard frames at each retention moment and across the video, plus its retention curve. */
+async function videoMaterial(videoId: string): Promise<{ parts: Part[]; context: string; projectId: string }> {
+  const d = await db();
+  const [video] = await d.select().from(schema.youtubeVideos).where(eq(schema.youtubeVideos.id, videoId));
+  const [project] = await d.select().from(schema.projects).where(eq(schema.projects.youtubeVideoId, videoId));
+  if (!video?.curveId || !project) throw new Error("Analyze this video first");
+  const [curve] = await d.select().from(schema.retentionCurves).where(eq(schema.retentionCurves.id, video.curveId));
+  const analysis = analyzeRetention(curve.points, { durationSeconds: video.durationSeconds });
+  const moments = analysis.anomalies.slice(0, 5).flatMap((a) => [a.contextStartSeconds, a.startSeconds]);
+  const samples = Array.from({ length: 6 }, (_, i) => (video.durationSeconds * (i + 0.5)) / 6);
+  const times = [...new Set([0, 10, 20, ...moments, ...samples].map((t) => Math.round(Math.min(t, video.durationSeconds - 1))))].sort((a, b) => a - b).slice(0, 16);
+  const parts: Part[] = [];
+  for (const t of times) {
+    const file = await youtubeFrame(videoId, t);
+    parts.push({ type: "text", text: `Frame at ${formatClock(t)}:` }, { type: "image", data: (await readFile(file)).toString("base64"), mime_type: "image/jpeg" });
+  }
+  const pct = (r: number) => Math.round((curve.points.find((p) => p.ratio >= r)?.watchRatio ?? 0) * 100);
+  const [asset] = await d.select().from(schema.sourceAssets).where(eq(schema.sourceAssets.projectId, project.id));
+  const transcript = asset?.transcript ? `\n<transcript>\n${asset.transcript.segments.map((s) => `[${formatClock(s.start)}] ${s.text}`).join("\n")}\n</transcript>` : "";
+  const context = `You are reviewing a PUBLISHED YouTube video, "${video.title}" (${formatClock(video.durationSeconds)}), using its real audience retention. Watch ratio: ${[0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.95].map((r) => `${pct(r)}% at ${formatClock(r * video.durationSeconds)}`).join(", ")}. Average viewed: ${video.metrics.averageViewPercentage ?? "?"}%. Moments where viewers left faster or held better than usual: ${analysis.anomalies
+    .slice(0, 5)
+    .map((a) => `${formatClock(a.startSeconds)} (${a.direction === "steeper_decline" ? "left faster" : "held better"})`)
+    .join(", ")}. Below are frames from the video, each labelled with its time. Say where you would have stopped watching and why, and what the creator should do differently next time.${transcript}`;
+  return { parts, context, projectId: project.id };
+}
+
 async function scriptMaterial(versionId: string): Promise<{ parts: Part[]; context: string; projectId: string }> {
   const d = await db();
   const [v] = await d.select().from(schema.artifactVersions).where(eq(schema.artifactVersions.id, versionId));
@@ -152,9 +179,9 @@ async function scriptMaterial(versionId: string): Promise<{ parts: Part[]; conte
  * Convenes four reviewer agents with different perspectives in parallel, then
  * has Gemini 4 Argon merge their reviews into an agreed list of fixes.
  */
-export async function runPanel(targetType: "render" | "script", targetId: string, stage: (s: string) => Promise<void>) {
+export async function runPanel(targetType: "render" | "script" | "video", targetId: string, stage: (s: string) => Promise<void>) {
   const d = await db();
-  const material = targetType === "render" ? await renderMaterial(targetId) : await scriptMaterial(targetId);
+  const material = targetType === "render" ? await renderMaterial(targetId) : targetType === "video" ? await videoMaterial(targetId) : await scriptMaterial(targetId);
   const [channel, lessons] = await Promise.all([getChannel(), listLessons()]);
   const channelContext = `<channel>\n${formatChannelForPrompt(channel)}\n</channel>\n<channel_lessons>\n${formatLessonsForPrompt(lessons.slice(0, 8))}\n</channel_lessons>`;
 

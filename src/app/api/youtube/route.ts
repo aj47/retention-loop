@@ -14,9 +14,9 @@ export const GET = route(async () => {
   const jobs = await d
     .select()
     .from(schema.jobs)
-    .where(or(eq(schema.jobs.type, "sync_channel"), eq(schema.jobs.type, "synthesize_memory")))
+    .where(or(eq(schema.jobs.type, "sync_channel"), eq(schema.jobs.type, "synthesize_memory"), eq(schema.jobs.type, "scout_ideas")))
     .orderBy(desc(schema.jobs.createdAt))
-    .limit(4);
+    .limit(8);
   const projects = await d.select({ id: schema.projects.id, youtubeVideoId: schema.projects.youtubeVideoId }).from(schema.projects);
   return {
     channelId: connectedChannelId(),
@@ -32,9 +32,14 @@ export const GET = route(async () => {
 export const POST = route(async (req) => {
   const { action, limit, rewatch } = await body(
     req,
-    z.object({ action: z.enum(["sync", "synthesize"]), limit: z.number().int().min(1).max(20).default(8), rewatch: z.boolean().default(false) }),
+    z.object({ action: z.enum(["sync", "synthesize", "ideas"]), limit: z.number().int().min(1).max(20).default(8), rewatch: z.boolean().default(false) }),
   );
   if (!connectedChannelId()) throw new HttpError(400, "YouTube Analytics is not connected");
-  const job = action === "sync" ? await enqueue("sync_channel", { limit }, null) : await enqueue("synthesize_memory", { rewatch }, null);
+  const job =
+    action === "sync"
+      ? await enqueue("sync_channel", { limit }, null)
+      : action === "ideas"
+        ? await enqueue("scout_ideas", {}, null)
+        : await enqueue("synthesize_memory", { rewatch }, null);
   return { job };
 });

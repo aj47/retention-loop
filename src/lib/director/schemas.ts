@@ -115,6 +115,15 @@ export type ViewerRead = z.infer<typeof ViewerReadSchema>;
 export const DraftSchema = z.object({
   script: z.string().describe("Full spoken script, paragraphs separated by blank lines"),
   notes: z.string().describe("One or two sentences on structural choices"),
+  recordingTips: z
+    .array(
+      z.object({
+        tip: z.string().describe("A concrete thing to do while recording, e.g. 'Record the finished output first so the cold open has real footage'"),
+        why: z.string().describe("What in this channel's history makes it matter"),
+        lessonIds: z.array(z.string()),
+      }),
+    )
+    .describe("4 to 6 tips for recording this video, grounded in the channel lessons"),
 });
 export type Draft = z.infer<typeof DraftSchema>;
 

@@ -30,7 +30,17 @@ interface Job {
     videos?: number;
     synced?: number;
     advice?: { title: string; why: string; action: string; evidence: Moment[] }[];
+    ideas?: Idea[];
   } | null;
+}
+
+interface Idea {
+  title: string;
+  hook: string;
+  whyNow: string;
+  fitsChannel: string;
+  method: string;
+  sources: { title: string; url: string }[];
 }
 
 interface Moment {
@@ -146,6 +156,12 @@ export function ChannelBoard() {
           </ol>
         </section>
       )}
+
+      <IdeasSection
+        job={data.jobs.find((j) => j.type === "scout_ideas")}
+        onScout={() => act("ideas", async () => (await api("/api/youtube", { json: { action: "ideas" } }), await load()))}
+        busy={busy === "ideas"}
+      />
 
       <LessonsSection idForTitle={idForTitle} />
 
@@ -341,5 +357,68 @@ function LessonRow({ lesson: l, moments, counter }: { lesson: Lesson; moments: M
         </div>
       )}
     </div>
+  );
+}
+
+/** Next-video ideas: what's trending (researched by a Managed Agent) matched to what this channel's viewers respond to. */
+function IdeasSection({ job, onScout, busy }: { job?: Job; onScout: () => void; busy: boolean }) {
+  const router = useRouter();
+  const [starting, setStarting] = useState<number | null>(null);
+  const running = job && (job.status === "queued" || job.status === "running");
+  const ideas = job?.status === "succeeded" ? (job.result?.ideas ?? []) : [];
+  const script = async (idea: Idea, i: number) => {
+    setStarting(i);
+    const r = await api<{ redirect: string }>("/api/start", { json: { text: `${idea.title}. ${idea.hook}`, kind: "idea", title: idea.title } });
+    router.push(r.redirect);
+  };
+  return (
+    <section>
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">Ideas for your next video</h2>
+        <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">trends researched by a Managed Agent</span>
+        <Button className="ml-auto" onClick={onScout} busy={busy} disabled={Boolean(running)}>
+          {ideas.length ? "Find new ideas" : "Find trending ideas"}
+        </Button>
+      </div>
+      {running && (
+        <p className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> {job!.stage}…
+        </p>
+      )}
+      {ideas.length > 0 && (
+        <ul className="grid gap-4 md:grid-cols-2">
+          {ideas.map((idea, i) => (
+            <li key={i}>
+              <Card className="flex h-full flex-col p-4">
+                <p className="leading-snug font-semibold">{idea.title}</p>
+                <p className="mt-2 line-clamp-3 text-sm italic">“{idea.hook}”</p>
+                <p className="mt-3 line-clamp-2 text-xs">
+                  <span className="font-medium text-accent">Why now · </span>
+                  <span className="text-muted">{idea.whyNow}</span>
+                </p>
+                <p className="mt-1 line-clamp-2 text-xs">
+                  <span className="font-medium text-accent">Fits your channel · </span>
+                  <span className="text-muted">{idea.fitsChannel.replace(/\(?\[?les_[a-z0-9]+\]?\)?/g, "").replace(/\s+([,.;])/g, "$1").replace(/\s{2,}/g, " ")}</span>
+                </p>
+                {idea.sources.length > 0 && (
+                  <p className="mt-2 line-clamp-1 text-[11px] text-faint">
+                    {idea.sources.slice(0, 2).map((src, k) => (
+                      <a key={k} href={src.url} target="_blank" rel="noreferrer" className="mr-2 underline">
+                        {src.title}
+                      </a>
+                    ))}
+                  </p>
+                )}
+                <div className="mt-auto pt-3">
+                  <Button variant="primary" onClick={() => script(idea, i)} busy={starting === i}>
+                    Script this idea
+                  </Button>
+                </div>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

@@ -7,6 +7,7 @@ import type { ViewerRead } from "@/lib/director/schemas";
 import { formatClock } from "@/lib/edit/export";
 import type { Finding, RetentionCurve } from "@/lib/projects/service";
 import { Badge, Button, Card, ErrorNote, ModelTag } from "../ui";
+import { ReviewPanel } from "../review-panel";
 import { RetentionChart } from "./retention-chart";
 import type { WorkspaceProps } from "./workspace";
 
@@ -64,6 +65,15 @@ export function ViewersView({ bundle, reload, go }: WorkspaceProps) {
             setImporting(false);
           }}
           pid={pid}
+        />
+      )}
+
+      {!importing && bundle.project.youtubeVideoId && (
+        <ReviewPanel
+          targetType="video"
+          targetId={bundle.project.youtubeVideoId}
+          projectId={pid}
+          frameUrl={(t) => `/api/frames/${bundle.project.youtubeVideoId}?t=${t.toFixed(1)}`}
         />
       )}
 

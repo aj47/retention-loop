@@ -46,7 +46,7 @@ export function ReviewPanel({
   projectId,
   frameUrl,
 }: {
-  targetType: "render" | "script";
+  targetType: "render" | "script" | "video";
   targetId: string;
   projectId: string;
   /** For renders: URL of a still at a cut-time timestamp. */
@@ -98,7 +98,7 @@ export function ReviewPanel({
           </span>
         )}
         <Button className="ml-auto" onClick={convene} disabled={Boolean(running)}>
-          {hasAny ? "Review again" : targetType === "render" ? "Convene the panel on this cut" : "Convene the panel on this script"}
+          {hasAny ? "Review again" : targetType === "render" ? "Convene the panel on this cut" : targetType === "video" ? "Have the panel review this video" : "Convene the panel on this script"}
         </Button>
       </div>
       <p className="mt-1 text-xs text-faint">Four reviewers with different perspectives, each a Managed Agent in its own sandbox.</p>

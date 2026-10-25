@@ -86,6 +86,7 @@ export function draft(briefText: string): Draft {
   return {
     script: [opening, ...beats].filter(Boolean).join("\n\n"),
     notes: "Offline mode: a beat-by-beat skeleton from the brief. Fill in each bracketed beat in your own words.",
+    recordingTips: [],
   };
 }
 
