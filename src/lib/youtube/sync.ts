@@ -3,7 +3,7 @@ import { z } from "zod";
 import { analyzeRetention } from "@/lib/analytics/retention";
 import { db, schema } from "@/lib/db";
 import { videoPart } from "@/lib/director";
-import { ARGON, FLASH, structured } from "@/lib/director/model";
+import { ARGON, structured } from "@/lib/director/model";
 import { formatClock } from "@/lib/edit/export";
 import { newId } from "@/lib/ids";
 import { formatChannelForPrompt, getChannel } from "@/lib/memory/lessons";
@@ -64,8 +64,20 @@ const VideoCardSchema = z.object({
 });
 export type VideoCard = z.infer<typeof VideoCardSchema>;
 
+const EvidenceSchema = z.object({ videoId: z.string(), atSeconds: z.number().nullable(), note: z.string().describe("What is on screen and said at this moment, and what viewers did") });
+
 const MemorySchema = z.object({
   channelSummary: z.string().describe("Two sentences on what this channel's audience responds to, grounded in the evidence"),
+  advice: z
+    .array(
+      z.object({
+        title: z.string().describe("Imperative, specific advice, e.g. 'Open on the finished result, not the agenda'"),
+        why: z.string().describe("The pattern in the evidence that supports it"),
+        action: z.string().describe("Exactly what to do differently in the next video"),
+        evidence: z.array(EvidenceSchema).describe("2-3 moments that best illustrate it, from different videos"),
+      }),
+    )
+    .describe("The 3 most important pieces of overall advice for the next video, most important first"),
   lessons: z.array(
     z.object({
       claim: z.string().describe("A specific, testable editorial lesson"),
@@ -73,8 +85,8 @@ const MemorySchema = z.object({
       suggestedUse: z.string().describe("How to use it in the next script or edit"),
       status: z.enum(["observation", "hypothesis"]),
       strength: z.enum(["weak", "moderate", "strong"]),
-      evidence: z.array(z.object({ videoId: z.string(), atSeconds: z.number().nullable(), note: z.string() })),
-      counterexamples: z.array(z.object({ videoId: z.string(), atSeconds: z.number().nullable(), note: z.string() })),
+      evidence: z.array(EvidenceSchema),
+      counterexamples: z.array(EvidenceSchema),
     }),
   ),
 });
@@ -94,17 +106,18 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 }
 
 /**
- * Builds channel memory in two tiers: Gemini Flash watches each video in
- * parallel and writes a card tied to its retention moments, then Gemini 4
- * Argon reads every card and curve together in one long-context call and
- * writes lessons with evidence and counterexamples.
+ * Builds channel memory in two tiers: Gemini 4 Argon watches each video in
+ * parallel and writes a card tied to its retention moments, then reads every
+ * card and curve together in one long-context call and writes overall advice
+ * and lessons with evidence and counterexamples.
  */
-export async function synthesizeMemory(stage: (s: string) => Promise<void>) {
+export async function synthesizeMemory(stage: (s: string) => Promise<void>, rewatch = false) {
   const d = await db();
   const videos = (await d.select().from(schema.youtubeVideos).orderBy(desc(schema.youtubeVideos.syncedAt))).filter((v) => v.curveId);
   if (!videos.length) throw new Error("No synced videos with retention data");
   const curves = await d.select().from(schema.retentionCurves).where(inArray(schema.retentionCurves.id, videos.map((v) => v.curveId!)));
   const curveFor = (id: string) => curves.find((c) => c.id === id)!;
+  if (rewatch) for (const v of videos) v.card = null;
 
   const analyses = videos.map((v) => {
     const curve = curveFor(v.curveId!);
@@ -113,14 +126,14 @@ export async function synthesizeMemory(stage: (s: string) => Promise<void>) {
   });
 
   let done = 0;
-  await stage(`Gemini Flash is watching ${videos.length} videos`);
+  await stage(`Gemini 4 Argon is watching ${videos.length} videos`);
   const cards = await mapLimit(videos, 4, async (v) => {
     const i = videos.indexOf(v);
     if (v.card) return v.card as VideoCard;
     const anomalies = analyses[i].anomalies.slice(0, 4);
     const r = await structured({
       schema: VideoCardSchema,
-      model: FLASH,
+      model: ARGON,
       thinking: "low",
       background: true,
       system: "You annotate a creator's published YouTube video for an editorial memory. Describe only what you see and hear.",
@@ -135,7 +148,7 @@ export async function synthesizeMemory(stage: (s: string) => Promise<void>) {
       ],
     });
     await d.update(schema.youtubeVideos).set({ card: r.data }).where(eq(schema.youtubeVideos.id, v.id));
-    await stage(`Gemini Flash watched ${++done}/${videos.length} videos`);
+    await stage(`Gemini 4 Argon watched ${++done}/${videos.length} videos`);
     return r.data;
   });
 
@@ -160,7 +173,7 @@ export async function synthesizeMemory(stage: (s: string) => Promise<void>) {
     background: true,
     system:
       "You are the AI Director's memory for a YouTube creator. Write lessons only from the evidence given. Retention data shows where viewers left, never why, so lessons are observations or hypotheses, not proven causes. Include counterexamples whenever the evidence contradicts a lesson.",
-    input: `<channel>\n${formatChannelForPrompt(channel)}\n</channel>\n\n<back_catalog count="${videos.length}">\n${evidence}\n</back_catalog>\n\nWrite 4 to 7 lessons about openings, payoff timing, pacing, and formats that this creator can apply to the next video. Each lesson cites specific videos and timestamps as evidence and lists any counterexamples.`,
+    input: `<channel>\n${formatChannelForPrompt(channel)}\n</channel>\n\n<back_catalog count="${videos.length}">\n${evidence}\n</back_catalog>\n\nFirst give the 3 most important pieces of overall advice for the next video, each illustrated by specific moments. Then write 4 to 7 lessons about openings, payoff timing, pacing, and formats. Each lesson cites specific videos and timestamps as evidence and lists any counterexamples. Use exact video ids and timestamps from the cards so moments can be shown as frames.`,
   });
 
   const titleOf = (id: string) => videos.find((v) => v.id === id)?.title ?? id;
@@ -179,5 +192,12 @@ export async function synthesizeMemory(stage: (s: string) => Promise<void>) {
       origin: "gemini",
     });
   }
-  return { lessons: r.data.lessons.length, channelSummary: r.data.channelSummary, model: r.model, videos: videos.length };
+  const label = (e: { videoId: string; atSeconds: number | null; note: string }) => ({ ...e, title: titleOf(e.videoId) });
+  return {
+    lessons: r.data.lessons.length,
+    channelSummary: r.data.channelSummary,
+    advice: r.data.advice.map((a) => ({ ...a, evidence: a.evidence.map(label) })),
+    model: r.model,
+    videos: videos.length,
+  };
 }

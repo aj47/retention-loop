@@ -148,6 +148,19 @@ export const verifications = pgTable("verifications", {
   createdAt: createdAt(),
 });
 
+export const reviews = pgTable("reviews", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  targetType: text("target_type").$type<"render" | "script">().notNull(),
+  targetId: text("target_id").notNull(),
+  persona: text("persona").notNull(),
+  status: text("status").$type<"running" | "done" | "failed">().notNull().default("running"),
+  result: jsonb("result").$type<Record<string, unknown> | null>(),
+  error: text("error"),
+  interactionId: text("interaction_id"),
+  createdAt: createdAt(),
+});
+
 export const youtubeVideos = pgTable("youtube_videos", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
@@ -213,7 +226,7 @@ export type ReviewStatus = "proposed" | "accepted" | "rejected";
 export type LessonStatus = "observation" | "hypothesis" | "experimentally_supported" | "inconclusive" | "outdated";
 export type EvidenceStrength = "weak" | "moderate" | "strong";
 export type EvidenceLabel = "observed" | "hypothesis" | "historically_associated" | "experimentally_supported" | "inconclusive";
-export type JobType = "prepare_media" | "render_preview" | "verify_render" | "sync_channel" | "synthesize_memory";
+export type JobType = "prepare_media" | "render_preview" | "verify_render" | "sync_channel" | "synthesize_memory" | "review_panel";
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface ChannelIdentity {

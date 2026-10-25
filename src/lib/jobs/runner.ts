@@ -1,9 +1,10 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import type { JobType } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { prepareMedia, renderPlan, verifyRender } from "./handlers";
 import { syncChannel, synthesizeMemory } from "@/lib/youtube/sync";
+import { runPanel } from "@/lib/director/panel";
 
 const MAX_ATTEMPTS = 2;
 
@@ -13,11 +14,19 @@ const handlers: Record<JobType, Handler> = {
   render_preview: (p, stage) => renderPlan(p.renderId as string, Boolean(p.full), Number(p.verifyRound ?? 1), stage),
   verify_render: (p, stage) => verifyRender(p.renderId as string, Number(p.round ?? 1), stage),
   sync_channel: (p, stage) => syncChannel(Number(p.limit ?? 8), stage),
-  synthesize_memory: (_p, stage) => synthesizeMemory(stage),
+  synthesize_memory: (p, stage) => synthesizeMemory(stage, Boolean(p.rewatch)),
+  review_panel: (p, stage) => runPanel(p.targetType as "render" | "script", p.targetId as string, stage),
 };
 
-const state = globalThis as unknown as { __rlRunner?: { running: boolean; recovered: boolean } };
-state.__rlRunner ??= { running: false, recovered: false };
+/** Jobs in different lanes run concurrently; jobs within a lane run one at a time. */
+const LANES: Record<string, JobType[]> = {
+  media: ["prepare_media", "render_preview", "verify_render"],
+  channel: ["sync_channel", "synthesize_memory"],
+  review: ["review_panel"],
+};
+
+const state = globalThis as unknown as { __rlRunner?: { running: Set<string>; recovered: boolean } };
+state.__rlRunner ??= { running: new Set(), recovered: false };
 
 export async function enqueue(type: JobType, payload: Record<string, unknown>, projectId: string | null) {
   const d = await db();
@@ -27,21 +36,33 @@ export async function enqueue(type: JobType, payload: Record<string, unknown>, p
 }
 
 /**
- * Processes queued jobs one at a time in this server process. Job state lives
- * in the database, so work interrupted by a restart is re-queued and resumed.
+ * Processes queued jobs in this server process, one lane at a time per lane.
+ * Job state lives in the database, so work interrupted by a restart is
+ * re-queued and resumed.
  */
 export async function kick(): Promise<void> {
   const r = state.__rlRunner!;
-  if (r.running) return;
-  r.running = true;
+  const d = await db();
+  if (!r.recovered) {
+    r.recovered = true;
+    await d.update(schema.jobs).set({ status: "queued", stage: "Resuming" }).where(eq(schema.jobs.status, "running"));
+  }
+  await Promise.all(Object.entries(LANES).map(([lane, types]) => runLane(lane, types)));
+}
+
+async function runLane(lane: string, types: JobType[]) {
+  const r = state.__rlRunner!;
+  if (r.running.has(lane)) return;
+  r.running.add(lane);
   try {
     const d = await db();
-    if (!r.recovered) {
-      r.recovered = true;
-      await d.update(schema.jobs).set({ status: "queued", stage: "Resuming" }).where(eq(schema.jobs.status, "running"));
-    }
     for (;;) {
-      const [job] = await d.select().from(schema.jobs).where(eq(schema.jobs.status, "queued")).orderBy(asc(schema.jobs.createdAt)).limit(1);
+      const [job] = await d
+        .select()
+        .from(schema.jobs)
+        .where(and(eq(schema.jobs.status, "queued"), inArray(schema.jobs.type, types)))
+        .orderBy(asc(schema.jobs.createdAt))
+        .limit(1);
       if (!job) break;
       const attempts = job.attempts + 1;
       await d.update(schema.jobs).set({ status: "running", attempts, updatedAt: new Date() }).where(eq(schema.jobs.id, job.id));
@@ -62,7 +83,7 @@ export async function kick(): Promise<void> {
       }
     }
   } finally {
-    r.running = false;
+    r.running.delete(lane);
   }
 }
 

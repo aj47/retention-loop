@@ -30,8 +30,11 @@ export const GET = route(async () => {
 });
 
 export const POST = route(async (req) => {
-  const { action, limit } = await body(req, z.object({ action: z.enum(["sync", "synthesize"]), limit: z.number().int().min(1).max(20).default(8) }));
+  const { action, limit, rewatch } = await body(
+    req,
+    z.object({ action: z.enum(["sync", "synthesize"]), limit: z.number().int().min(1).max(20).default(8), rewatch: z.boolean().default(false) }),
+  );
   if (!connectedChannelId()) throw new HttpError(400, "YouTube Analytics is not connected");
-  const job = action === "sync" ? await enqueue("sync_channel", { limit }, null) : await enqueue("synthesize_memory", {}, null);
+  const job = action === "sync" ? await enqueue("sync_channel", { limit }, null) : await enqueue("synthesize_memory", { rewatch }, null);
   return { job };
 });

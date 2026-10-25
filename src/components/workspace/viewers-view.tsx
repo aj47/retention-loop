@@ -81,7 +81,24 @@ export function ViewersView({ bundle, reload, go }: WorkspaceProps) {
             <section className="space-y-3">
               <h2 className="font-semibold">What viewers did</h2>
               {groups.map((g, i) => (
-                <FindingCard key={i} index={i} group={g} open={selected === i} onToggle={() => setSelected(selected === i ? null : i)} curve={curve} analysis={analysis} transcript={asset?.transcript ?? null} go={go} />
+                <FindingCard
+                  key={i}
+                  index={i}
+                  group={g}
+                  open={selected === i}
+                  onToggle={() => setSelected(selected === i ? null : i)}
+                  curve={curve}
+                  analysis={analysis}
+                  transcript={asset?.transcript ?? null}
+                  go={go}
+                  frameAt={
+                    bundle.project.youtubeVideoId
+                      ? (t) => `/api/frames/${bundle.project.youtubeVideoId}?t=${t.toFixed(1)}`
+                      : asset
+                        ? (t) => `/api/frames/${asset.id}?t=${t.toFixed(1)}`
+                        : undefined
+                  }
+                />
               ))}
             </section>
           )}
@@ -136,7 +153,9 @@ function FindingCard({
   analysis,
   transcript,
   go,
+  frameAt,
 }: {
+  frameAt?: (t: number) => string;
   index: number;
   group: Group;
   open: boolean;
@@ -156,8 +175,22 @@ function FindingCard({
 
   return (
     <Card className="p-4">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded bg-stone-200 text-[11px] font-medium">{index + 1}</span>
+      <div className="flex items-start gap-4">
+        {frameAt ? (
+          <div className="w-56 shrink-0">
+            <div className="relative overflow-hidden rounded-md bg-stone-200">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={frameAt(group.start)} alt="" className="aspect-video w-full object-cover" />
+              <span className="absolute top-1 left-1 flex size-5 items-center justify-center rounded bg-black/75 text-[11px] font-medium text-white">{index + 1}</span>
+              <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] text-white">{formatClock(group.start)}</span>
+            </div>
+            <p className={`mt-1.5 text-[11px] font-medium ${decline ? "text-del-ink" : "text-add-ink"}`}>
+              {decline ? "Viewers left faster than usual" : "Viewers held better than usual"}
+            </p>
+          </div>
+        ) : (
+          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded bg-stone-200 text-[11px] font-medium">{index + 1}</span>
+        )}
         <div className="min-w-0 flex-1 space-y-2.5 text-sm">
           <p className="text-xs text-muted tabular-nums">
             {formatClock(group.start)}–{formatClock(group.end)}

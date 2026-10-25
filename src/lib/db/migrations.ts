@@ -213,4 +213,22 @@ CREATE TABLE youtube_videos (
 );
 `,
   },
+  {
+    id: "0003_review_panel",
+    sql: `
+CREATE TABLE reviews (
+  id text PRIMARY KEY,
+  project_id text NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  target_type text NOT NULL,
+  target_id text NOT NULL,
+  persona text NOT NULL,
+  status text NOT NULL DEFAULT 'running',
+  result jsonb,
+  error text,
+  interaction_id text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX reviews_target_idx ON reviews(target_id, created_at);
+`,
+  },
 ];

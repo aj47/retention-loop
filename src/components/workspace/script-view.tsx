@@ -5,6 +5,7 @@ import { api, download } from "@/lib/client";
 import type { Rewrite, ShotPlan } from "@/lib/director/schemas";
 import type { ArtifactVersion } from "@/lib/projects/service";
 import { changeIds, diffScripts, splitParagraphs, type ScriptBlock } from "@/lib/script/diff";
+import { ReviewPanel } from "../review-panel";
 import { Badge, Button, Card, ErrorNote, ModelTag } from "../ui";
 import type { WorkspaceProps } from "./workspace";
 import { fmtDateTime, fmtTime } from "@/lib/format";
@@ -272,6 +273,10 @@ export function ScriptView({ bundle, reload, go }: WorkspaceProps) {
               </div>
             )}
           </Card>
+        )}
+
+        {(proposal ?? current) && (
+          <ReviewPanel key={(proposal ?? current)!.id} targetType="script" targetId={(proposal ?? current)!.id} projectId={pid} />
         )}
 
         <section>

@@ -12,7 +12,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Product spec: `docs/spec.md`. Keep observations, hypotheses, and historical associations separate everywhere; never present an unrendered edit as playable.
 - Pure logic lives in `src/lib/{script,edit,analytics}` and is unit-tested in `tests/`. Run `pnpm test`, `pnpm typecheck`, and `pnpm lint` before committing.
-- Gemini is the only AI provider. `src/lib/director/model.ts` calls the Interactions API (`@google/genai`) with JSON-schema structured output: `gemini-4-argon` leads (editorial decisions, video understanding, self-check, channel memory), `gemini-3.8-flash` handles parallel per-video cards, selection rewrites, and shot plans. Every Director function has an offline fallback in `offline.ts`.
+- Gemini is the only AI provider. `src/lib/director/model.ts` calls the Interactions API (`@google/genai`) with JSON-schema structured output: `gemini-4-argon` leads (editorial decisions, video understanding, self-check, channel memory), `gemini-3.8-flash` handles selection rewrites and shot plans. The review panel (`src/lib/director/panel.ts`) uses saved Antigravity managed agents pinned to `gemini-4-argon`; they accept text and images only, so renders are reviewed from keyframes plus transcript.
+- Jobs run in lanes (`media`, `channel`, `review`): concurrent across lanes, serial within one. Every Director function has an offline fallback in `offline.ts`.
 - Video goes to Gemini as Files API uploads (540p proxies, re-uploaded after 46h) or public YouTube URLs, always with `processing: "agentic"`. Video and long-context calls run with `background: true` and are polled.
 - YouTube access is read-only (`yt-analytics.readonly`) from `YT_ANALYTICS_CONFIG_DIR`; uploads are listed with `yt-dlp`. Never add write scopes.
 - Format dates with `src/lib/format.ts`, not `toLocale*`, to avoid hydration mismatches.

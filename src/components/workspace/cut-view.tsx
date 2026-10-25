@@ -7,6 +7,7 @@ import { formatClock } from "@/lib/edit/export";
 import { compileTimeline, outputToSource, sourceToOutput, timelineKey } from "@/lib/edit/timeline";
 import type { EditOperation, ProjectBundle, SourceAsset } from "@/lib/projects/service";
 import { uploadWithProgress } from "../composer";
+import { ReviewPanel } from "../review-panel";
 import { Badge, Button, Card, ErrorNote, ModelTag, Spinner } from "../ui";
 import type { WorkspaceProps } from "./workspace";
 
@@ -205,6 +206,15 @@ function PlanWorkspace({
         </Card>
 
         <VerificationPanel plan={plan} bundle={bundle} />
+        {render?.path && (
+          <ReviewPanel
+            key={render.id}
+            targetType="render"
+            targetId={render.id}
+            projectId={bundle.project.id}
+            frameUrl={(t) => `/api/frames/${asset.id}?render=${render.id}&t=${t.toFixed(1)}`}
+          />
+        )}
 
         <div className="flex flex-wrap items-center gap-1">
           {(

@@ -17,10 +17,11 @@ All code in this repository was written during the event: the app, the Gemini 4 
 
 | Job | Model | How |
 |---|---|---|
-| Learn the channel | `gemini-3.8-flash` → `gemini-4-argon` | Syncs recent uploads and retention from YouTube Analytics (read-only). Flash watches each video in parallel and annotates its hook, beats, and what was on screen at every retention drop or hold. Argon reads the whole back catalog in one long-context call and writes lessons with evidence and counterexamples. |
+| Learn the channel | `gemini-4-argon` | Syncs recent uploads and retention from YouTube Analytics (read-only). Argon watches each video in parallel and annotates its hook, beats, and what was on screen at every retention drop or hold, then reads the whole back catalog in one long-context call and writes overall advice and lessons with evidence and counterexamples, shown with real frames from each moment. |
 | Explain a drop | `gemini-4-argon` | Watches the published video (YouTube URL, agentic video understanding) at each flagged moment and separates what was observed from competing hypotheses. |
 | Propose a recut | `gemini-4-argon` | Watches the actual rough cut and proposes typed edit operations (trim, remove, move, tighten pauses) with timestamped observations of what it saw. |
 | Check its own work | `gemini-4-argon` | After the deterministic FFmpeg render, Argon watches the render beside the original, runs pass/fail checks (clipped words, payoff in the first 20s, broken references, jarring jumps, coherence), adjusts cut points, and re-renders for up to three rounds. |
+| Review panel | Managed Agents (Antigravity) on `gemini-4-argon` | Four saved agents with different perspectives (a first-time viewer, a retention editor, a skeptic with Google Search, a longtime subscriber who knows the channel lessons) review a rendered cut from keyframes and transcript, or a script, in parallel. Argon merges their notes into ranked fixes. |
 | Ideas and scripts | `gemini-4-argon`, `gemini-3.8-flash` | Directions, briefs, drafts, and payoff-first rewrites that cite the channel lessons they applied. Flash handles selection rewrites and shot plans. |
 
 The creator stays in control: nothing is published or uploaded to YouTube, every edit can be toggled or rejected, and source files are never modified.
