@@ -97,63 +97,51 @@ export function ChannelBoard() {
 
   const memory = data.jobs.find((j) => j.type === "synthesize_memory" && j.status === "succeeded");
   const idForTitle = (title?: string) => data.videos.find((v) => v.title === title)?.id;
+  const firstSentence = (t: string) => t.match(/^.+?[.!?](\s|$)/)?.[0] ?? t;
+  const avgViewed = data.videos.length
+    ? Math.round(data.videos.reduce((sum, v) => sum + (v.metrics.averageViewPercentage ?? 0), 0) / data.videos.length)
+    : null;
   return (
-    <div className="space-y-5">
-      <Card className="flex flex-wrap items-center gap-3 p-4">
-        <div>
-          <p className="font-medium">Connected · read-only YouTube Analytics</p>
-          <p className="font-mono text-xs text-faint">{data.channelId}</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {running && (
-            <span className="flex items-center gap-2 text-sm text-muted">
-              <Spinner /> {running.stage}…
-            </span>
-          )}
-          <Button
-            variant="primary"
-            busy={busy === "sync"}
-            disabled={Boolean(running)}
-            onClick={() => act("sync", async () => (await api("/api/youtube", { json: { action: "sync", limit: 8 } }), await load()))}
-          >
-            {data.videos.length ? "Sync latest videos" : "Sync channel"}
-          </Button>
-        </div>
-      </Card>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="flex items-center gap-1.5 text-muted">
+          <span className="size-1.5 rounded-full bg-emerald-500" /> YouTube Analytics connected (read-only)
+        </span>
+        {running && (
+          <span className="flex items-center gap-2 text-muted">
+            <Spinner /> {running.stage}…
+          </span>
+        )}
+        <Button
+          className="ml-auto"
+          busy={busy === "sync"}
+          disabled={Boolean(running)}
+          onClick={() => act("sync", async () => (await api("/api/youtube", { json: { action: "sync", limit: 8 } }), await load()))}
+        >
+          {data.videos.length ? "Sync latest videos" : "Sync channel"}
+        </Button>
+      </div>
       <ErrorNote error={error ?? data.jobs.find((j) => j.status === "failed")?.error ?? null} />
 
       {memory?.result?.channelSummary && (
-        <Card className="p-5">
-          <p className="text-[11px] font-medium tracking-wide text-accent uppercase">What Gemini 4 Argon learned by watching {memory.result.videos} of your videos</p>
-          <p className="mt-1.5 text-[15px] leading-relaxed">{memory.result.channelSummary}</p>
+        <Card className="p-6">
+          <p className="text-[11px] font-medium tracking-wide text-accent uppercase">Gemini 4 Argon watched your last {memory.result.videos} videos</p>
+          <p className="mt-2 text-xl leading-snug font-semibold tracking-tight">{firstSentence(memory.result.channelSummary)}</p>
+          <div className="mt-4 flex flex-wrap gap-6 text-sm">
+            <Stat value={String(memory.result.videos ?? data.videos.length)} label="videos watched" />
+            <Stat value={String(memory.result.advice?.length ?? 0)} label="moves for your next video" />
+            <Stat value={String(memory.result.lessons ?? 0)} label="lessons learned" />
+            {avgViewed != null && <Stat value={`${avgViewed}%`} label="average viewed today" />}
+          </div>
         </Card>
       )}
 
       {memory?.result?.advice && memory.result.advice.length > 0 && (
         <section>
-          <h2 className="mb-2 font-semibold">Overall advice for your next video</h2>
-          <ol className="space-y-3">
+          <h2 className="mb-3 text-lg font-semibold tracking-tight">Do this in your next video</h2>
+          <ol className="grid gap-4 lg:grid-cols-3">
             {memory.result.advice.map((a, i) => (
-              <li key={i}>
-                <Card className="p-4">
-                  <div className="flex gap-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-white">{i + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold">{a.title}</p>
-                      <p className="mt-1 text-sm text-muted">{a.why}</p>
-                      <p className="mt-1.5 text-sm">
-                        <span className="font-medium">Do this: </span>
-                        {a.action}
-                      </p>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                        {a.evidence.map((e, k) => (
-                          <MomentCard key={k} moment={e} />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              </li>
+              <AdviceCard key={i} index={i} advice={a} />
             ))}
           </ol>
         </section>
@@ -161,46 +149,107 @@ export function ChannelBoard() {
 
       <LessonsSection idForTitle={idForTitle} />
 
-      <ul className="grid gap-3 md:grid-cols-2">
-        {data.videos.map((v) => (
-          <li key={v.id}>
-            <Card className="flex h-full gap-3 p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} alt="" className="h-20 w-36 shrink-0 rounded object-cover" />
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-medium">{v.title}</p>
-                <p className="mt-0.5 text-xs text-muted tabular-nums">
-                  {formatClock(v.durationSeconds)} · {v.metrics.views?.toLocaleString() ?? "–"} views · {v.metrics.averageViewPercentage?.toFixed(0) ?? "–"}% avg viewed
-                </p>
-                <Sparkline points={v.points} />
-                {v.card?.hook && <p className="mt-1 line-clamp-2 text-xs text-muted">Hook: {v.card.hook}</p>}
-                <div className="mt-2">
-                  {v.projectId ? (
-                    <Link href={`/projects/${v.projectId}?view=viewers`} className="text-xs underline">
-                      Open analysis
-                    </Link>
-                  ) : (
-                    <Button
-                      className="!px-2 !py-1 text-xs"
-                      busy={busy === v.id}
-                      disabled={!!busy}
-                      onClick={() =>
-                        act(v.id, async () => {
-                          const r = await api<{ redirect: string }>(`/api/youtube/videos/${v.id}/analyze`, { json: {} });
-                          router.push(r.redirect);
-                        })
-                      }
-                    >
-                      {busy === v.id ? "Argon is watching…" : "Analyze with Argon"}
-                    </Button>
-                  )}
+      <details className="group">
+        <summary className="cursor-pointer list-none text-sm font-medium text-muted hover:text-ink">
+          <span className="group-open:hidden">▸</span>
+          <span className="hidden group-open:inline">▾</span> Your videos ({data.videos.length})
+        </summary>
+        <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {data.videos.map((v) => (
+            <li key={v.id}>
+              <Card className="h-full overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`} alt="" className="aspect-video w-full object-cover" />
+                <div className="p-2.5">
+                  <p className="line-clamp-2 text-xs font-medium">{v.title}</p>
+                  <p className="mt-0.5 text-[11px] text-muted tabular-nums">{v.metrics.averageViewPercentage?.toFixed(0) ?? "–"}% viewed</p>
+                  <Sparkline points={v.points} />
+                  <div className="mt-1.5">
+                    {v.projectId ? (
+                      <Link href={`/projects/${v.projectId}?view=viewers`} className="text-xs underline">
+                        Open analysis
+                      </Link>
+                    ) : (
+                      <Button
+                        className="!px-2 !py-1 text-xs"
+                        busy={busy === v.id}
+                        disabled={!!busy}
+                        onClick={() =>
+                          act(v.id, async () => {
+                            const r = await api<{ redirect: string }>(`/api/youtube/videos/${v.id}/analyze`, { json: {} });
+                            router.push(r.redirect);
+                          })
+                        }
+                      >
+                        {busy === v.id ? "Argon is watching…" : "Analyze with Argon"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Card>
-          </li>
-        ))}
-      </ul>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="text-xs text-muted">{label}</p>
+    </div>
+  );
+}
+
+/** One move for the next video: the headline and one real moment up front; reasoning and more moments on demand. */
+function AdviceCard({ index, advice }: { index: number; advice: { title: string; why: string; action: string; evidence: Moment[] } }) {
+  const [open, setOpen] = useState(false);
+  const [lead, ...rest] = advice.evidence;
+  return (
+    <li>
+      <Card className="flex h-full flex-col overflow-hidden">
+        {lead && <MomentImage moment={lead} />}
+        <div className="flex flex-1 flex-col p-4">
+          <div className="flex gap-2.5">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white">{index + 1}</span>
+            <p className="leading-snug font-semibold">{advice.title}</p>
+          </div>
+          {open && (
+            <div className="mt-3 space-y-2 text-sm">
+              <p className="text-muted">{advice.why}</p>
+              <p>
+                <span className="font-medium">Do this: </span>
+                {advice.action}
+              </p>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {[lead, ...rest].filter(Boolean).map((e, k) => (
+                  <MomentCard key={k} moment={e} />
+                ))}
+              </div>
+            </div>
+          )}
+          <button onClick={() => setOpen((o) => !o)} className="mt-auto pt-3 text-left text-xs font-medium text-accent hover:underline">
+            {open ? "Show less" : `Why · ${advice.evidence.length} moments from your videos`}
+          </button>
+        </div>
+      </Card>
+    </li>
+  );
+}
+
+function MomentImage({ moment }: { moment: Moment }) {
+  const t = moment.atSeconds ?? 0;
+  return (
+    <a href={`https://www.youtube.com/watch?v=${moment.videoId}&t=${Math.floor(t)}s`} target="_blank" rel="noreferrer" className="relative block bg-stone-200">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`/api/frames/${moment.videoId}?t=${t.toFixed(1)}`} alt="" className="aspect-video w-full object-cover" />
+      <span className="absolute bottom-2 left-2 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] text-white">
+        {moment.atSeconds != null ? formatClock(moment.atSeconds) : ""} · {moment.title?.slice(0, 32)}
+      </span>
+    </a>
   );
 }
 
@@ -249,35 +298,48 @@ function LessonsSection({ idForTitle }: { idForTitle: (title?: string) => string
     });
   return (
     <section>
-      <div className="mb-2 flex items-center gap-2">
-        <h2 className="font-semibold">Lessons from your back catalog</h2>
-        <Link href="/memory" className="ml-auto text-sm underline">
-          Edit in Channel Memory →
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-lg font-semibold tracking-tight">What your channel taught it</h2>
+        <Link href="/memory" className="ml-auto text-sm text-muted underline">
+          All lessons
         </Link>
       </div>
-      <div className="space-y-3">
+      <Card className="divide-y divide-line">
         {lessons.map((l) => (
-          <Card key={l.id} className="p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge kind={l.status} />
-              <span className="text-xs text-muted">{l.strength} evidence</span>
-            </div>
-            <p className="mt-1.5 font-medium">{l.claim}</p>
-            {l.applicability && <p className="mt-0.5 text-sm text-muted">Applies when: {l.applicability}</p>}
-            <div className="mt-3 grid gap-3 sm:grid-cols-4">
-              {moments(l.evidence).slice(0, 3).map((m, i) => (
-                <MomentCard key={i} moment={m} />
-              ))}
-              {moments(l.counterexamples).slice(0, 1).map((m, i) => (
-                <div key={`c${i}`} className="rounded-md ring-2 ring-amber-300 ring-offset-2">
-                  <p className="mb-1 text-[11px] font-medium text-amber-800">Counterexample</p>
-                  <MomentCard moment={m} />
-                </div>
-              ))}
-            </div>
-          </Card>
+          <LessonRow key={l.id} lesson={l} moments={moments(l.evidence)} counter={moments(l.counterexamples)} />
         ))}
-      </div>
+      </Card>
     </section>
+  );
+}
+
+function LessonRow({ lesson: l, moments, counter }: { lesson: Lesson; moments: Moment[]; counter: Moment[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="p-4">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left">
+        <div className="flex shrink-0 -space-x-3">
+          {moments.slice(0, 3).map((m, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={i} src={`/api/frames/${m.videoId}?t=${(m.atSeconds ?? 0).toFixed(1)}`} alt="" className="h-10 w-16 rounded border-2 border-card object-cover" />
+          ))}
+        </div>
+        <p className="min-w-0 flex-1 text-sm font-medium">{l.claim}</p>
+        <Badge kind={l.status} />
+      </button>
+      {open && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
+          {moments.slice(0, 3).map((m, i) => (
+            <MomentCard key={i} moment={m} />
+          ))}
+          {counter.slice(0, 1).map((m, i) => (
+            <div key={`c${i}`} className="rounded-md ring-2 ring-amber-300 ring-offset-2">
+              <p className="mb-1 text-[11px] font-medium text-amber-800">Counterexample</p>
+              <MomentCard moment={m} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

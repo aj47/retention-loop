@@ -55,6 +55,7 @@ export function ReviewPanel({
   const [state, setState] = useState<PanelState | null>(null);
   const [tick, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -100,18 +101,14 @@ export function ReviewPanel({
           {hasAny ? "Review again" : targetType === "render" ? "Convene the panel on this cut" : "Convene the panel on this script"}
         </Button>
       </div>
-      <p className="mt-1 text-xs text-faint">
-        Each reviewer is a saved Antigravity agent with its own perspective, working in its own sandbox
-        {targetType === "render" ? " from keyframes and the transcript of the cut" : ""}. The skeptic can check claims with Google Search.
-      </p>
+      <p className="mt-1 text-xs text-faint">Four reviewers with different perspectives, each a Managed Agent in its own sandbox.</p>
       <ErrorNote error={error ?? (state.job?.status === "failed" ? state.job.error : null)} />
 
       {consensus?.result?.summary && (
         <div className="mt-4 rounded-lg bg-paper p-3">
-          <p className="text-[11px] font-medium tracking-wide text-accent uppercase">Where the panel agrees · merged by Gemini 4 Argon</p>
-          <p className="mt-1 text-sm">{consensus.result.summary}</p>
+          <p className="text-[11px] font-medium tracking-wide text-accent uppercase">The panel&apos;s top fixes · merged by Gemini 4 Argon</p>
           <ol className="mt-2 space-y-1 text-sm">
-            {consensus.result.fixes?.map((f, i) => (
+            {consensus.result.fixes?.slice(0, 3).map((f, i) => (
               <li key={i} className="flex gap-2">
                 <span className="font-medium text-accent">{i + 1}.</span>
                 <span>
@@ -126,6 +123,7 @@ export function ReviewPanel({
       )}
 
       {(hasAny || running) && (
+        <>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {state.personas.map((p, i) => {
             const r = byPersona.get(p.id);
@@ -150,11 +148,11 @@ export function ReviewPanel({
                   )}
                 </div>
                 {r?.status === "failed" && <p className="mt-2 text-xs text-del-ink">{r.error}</p>}
-                {res?.headline && <p className="mt-2 italic">“{res.headline}”</p>}
-                {res?.wouldStopAtSeconds != null && targetType === "render" && (
+                {res?.headline && <p className={`mt-2 italic ${details ? "" : "line-clamp-2"}`}>“{res.headline}”</p>}
+                {details && res?.wouldStopAtSeconds != null && targetType === "render" && (
                   <p className="mt-1 text-xs text-muted">Would stop watching at {formatClock(res.wouldStopAtSeconds)}</p>
                 )}
-                {res?.notes && (
+                {details && res?.notes && (
                   <ul className="mt-2 space-y-2">
                     {res.notes.map((n, k) => (
                       <li key={k} className="flex gap-2">
@@ -172,7 +170,7 @@ export function ReviewPanel({
                     ))}
                   </ul>
                 )}
-                {res?.topFix && (
+                {details && res?.topFix && (
                   <p className="mt-2 border-t border-line pt-2 text-xs">
                     <span className="font-medium">Top fix:</span> {res.topFix}
                   </p>
@@ -181,6 +179,12 @@ export function ReviewPanel({
             );
           })}
         </div>
+        {hasAny && (
+          <button onClick={() => setDetails((d) => !d)} className="mt-3 text-xs font-medium text-accent hover:underline">
+            {details ? "Hide full reviews" : "Read the full reviews"}
+          </button>
+        )}
+        </>
       )}
     </Card>
   );

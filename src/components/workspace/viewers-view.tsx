@@ -196,14 +196,14 @@ function FindingCard({
             {formatClock(group.start)}–{formatClock(group.end)}
           </p>
           {group.observed && (
-            <p>
+            <p className={open ? "" : "line-clamp-3"}>
               <Badge kind="observed" /> <span className="ml-1">{withLessonLinks(group.observed.title)}</span>
               {group.observed.evidence.watchedVideo === true && (
                 <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">Gemini 4 Argon watched this moment</span>
               )}
             </p>
           )}
-          {hyp.hypotheses && (
+          {open && hyp.hypotheses && (
             <div>
               <Badge kind="hypothesis" />
               <ul className="mt-1 ml-1 space-y-0.5">
@@ -215,7 +215,7 @@ function FindingCard({
               </ul>
             </div>
           )}
-          {group.historical && (
+          {open && group.historical && (
             <p>
               <Badge kind="historically_associated" /> <span className="ml-1">{withLessonLinks(group.historical.title)}</span>
             </p>
@@ -229,7 +229,7 @@ function FindingCard({
             )}
             <Button onClick={() => go("script")}>Apply to a script</Button>
             <Button variant="ghost" onClick={onToggle}>
-              {open ? "Hide evidence" : "Evidence"}
+              {open ? "Show less" : "Why? · evidence"}
             </Button>
           </div>
           {open && anomaly && (
@@ -398,6 +398,8 @@ function ProposedLessons({ lessons, model, curve }: { lessons: ProposedLesson[];
 
 /** Turns "[les_abc123]" references into links to the lesson in Channel Memory. */
 function withLessonLinks(text: string) {
+  // Model text sometimes quotes internal statistics; creators don't need them.
+  text = text.replace(/\s*\((?:residual|residual_vs_expected)[^)]*\)/gi, "").replace(/\s*residual[^,.;)]*/gi, "");
   const parts = text.split(/\[(les_[a-z0-9]+)\]/g);
   return parts.map((part, i) =>
     i % 2 ? (

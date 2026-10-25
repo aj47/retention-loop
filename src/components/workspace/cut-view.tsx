@@ -8,7 +8,7 @@ import { compileTimeline, outputToSource, sourceToOutput, timelineKey } from "@/
 import type { EditOperation, ProjectBundle, SourceAsset } from "@/lib/projects/service";
 import { uploadWithProgress } from "../composer";
 import { ReviewPanel } from "../review-panel";
-import { Badge, Button, Card, ErrorNote, ModelTag, Spinner } from "../ui";
+import { Badge, Button, Card, ErrorNote, Spinner } from "../ui";
 import type { WorkspaceProps } from "./workspace";
 
 type Plan = ProjectBundle["plans"][number];
@@ -185,36 +185,40 @@ function PlanWorkspace({
   return (
     <div className="grid gap-6 2xl:grid-cols-[minmax(0,1fr)_380px]">
       <div className="min-w-0 space-y-4">
-        <Card className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-semibold">{plan.treatment}</h2>
-            <ModelTag model={plan.model} />
-            <span className="ml-auto text-sm text-muted tabular-nums">
-              {formatClock(duration)} → {formatClock(compiled.duration)}{" "}
-              <span className={delta < 0 ? "text-add-ink" : ""}>({delta <= 0 ? "−" : "+"}{formatClock(Math.abs(delta))})</span>
-            </span>
+        <Card className="p-5">
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium tracking-wide text-accent uppercase">Gemini 4 Argon&apos;s recut</p>
+              <h2 className="mt-1 text-lg leading-snug font-semibold tracking-tight">{plan.treatment}</h2>
+            </div>
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formatClock(Math.round(duration))} <span className="text-faint">→</span> {formatClock(Math.round(compiled.duration))}
+              </p>
+              <p className="text-xs text-muted">{delta < 0 ? `${formatClock(-delta)} of dead air and detours removed` : "length"}</p>
+            </div>
+            {plan.verifications.at(-1)?.passed && (
+              <div>
+                <p className="text-2xl font-semibold text-add-ink">
+                  {plan.verifications.at(-1)!.checks.filter((c) => c.passed).length}/{plan.verifications.at(-1)!.checks.length} ✓
+                </p>
+                <p className="text-xs text-muted">verified by watching its own render</p>
+              </div>
+            )}
           </div>
-          <p className="mt-1 text-sm text-muted">{summary}</p>
-          {continuity.length > 0 && (
-            <ul className="mt-2 space-y-0.5 text-sm">
-              {continuity.map((c, i) => (
-                <li key={i}>{c}</li>
-              ))}
-            </ul>
-          )}
-          {plan.observations.length > 0 && <Observations plan={plan} />}
+          <details className="mt-3 text-sm text-muted">
+            <summary className="cursor-pointer text-xs font-medium hover:text-ink">What changed and why</summary>
+            <p className="mt-1">{summary}</p>
+            {continuity.length > 0 && (
+              <ul className="mt-2 space-y-0.5">
+                {continuity.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
+            )}
+          </details>
+          {plan.observations.length > 0 && <Observations plan={plan} assetId={asset.id} />}
         </Card>
-
-        <VerificationPanel plan={plan} bundle={bundle} />
-        {render?.path && (
-          <ReviewPanel
-            key={render.id}
-            targetType="render"
-            targetId={render.id}
-            projectId={bundle.project.id}
-            frameUrl={(t) => `/api/frames/${asset.id}?render=${render.id}&t=${t.toFixed(1)}`}
-          />
-        )}
 
         <div className="flex flex-wrap items-center gap-1">
           {(
@@ -262,6 +266,17 @@ function PlanWorkspace({
           <p className="text-xs text-amber-700">
             Not applied: {compiled.skipped.map((s) => `${plan.operations.find((o) => o.id === s.id)?.title} (${s.reason})`).join("; ")}
           </p>
+        )}
+
+        <VerificationPanel plan={plan} bundle={bundle} />
+        {render?.path && (
+          <ReviewPanel
+            key={render.id}
+            targetType="render"
+            targetId={render.id}
+            projectId={bundle.project.id}
+            frameUrl={(t) => `/api/frames/${asset.id}?render=${render.id}&t=${t.toFixed(1)}`}
+          />
         )}
 
         <Card className="flex flex-wrap items-center gap-2 p-3">
@@ -604,14 +619,16 @@ function seekOriginal(t: number) {
   }
 }
 
-/** What Argon saw in the footage, with timestamps that jump the original player. */
-function Observations({ plan }: { plan: Plan }) {
+/** What Argon saw in the footage: frames at each moment; click to jump the original player. */
+function Observations({ plan, assetId }: { plan: Plan; assetId: string }) {
+  const [all, setAll] = useState(false);
   const [showThoughts, setShowThoughts] = useState(false);
   const trace = plan.trace;
+  const shown = all ? plan.observations : plan.observations.slice(0, 4);
   return (
-    <div className="mt-4 border-t border-line pt-3">
+    <div className="mt-4 border-t border-line pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-medium text-muted">What Gemini 4 Argon saw in your footage</p>
+        <p className="text-sm font-medium">What Argon saw in your footage</p>
         {trace && trace.videoLoads > 0 && (
           <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[11px] text-accent">navigated the video {trace.videoLoads}×</span>
         )}
@@ -621,16 +638,25 @@ function Observations({ plan }: { plan: Plan }) {
           </button>
         )}
       </div>
-      <ul className="mt-2 space-y-1 text-sm">
-        {plan.observations.map((o, i) => (
-          <li key={i} className="flex gap-2">
-            <button onClick={() => seekOriginal(o.atSeconds)} className="shrink-0 font-mono text-xs text-accent hover:underline">
-              {formatClock(o.atSeconds)}
+      <ul className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {shown.map((o, i) => (
+          <li key={i}>
+            <button onClick={() => seekOriginal(o.atSeconds)} className="group block w-full text-left">
+              <div className="relative overflow-hidden rounded-md bg-stone-200">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/api/frames/${assetId}?t=${o.atSeconds.toFixed(1)}`} alt="" className="aspect-video w-full object-cover transition-transform group-hover:scale-[1.03]" />
+                <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1.5 py-0.5 font-mono text-[11px] text-white">{formatClock(o.atSeconds)}</span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-xs text-muted">{o.note}</p>
             </button>
-            <span>{o.note}</span>
           </li>
         ))}
       </ul>
+      {plan.observations.length > 4 && (
+        <button onClick={() => setAll((a) => !a)} className="mt-2 text-xs font-medium text-accent hover:underline">
+          {all ? "Show fewer" : `Show all ${plan.observations.length} moments`}
+        </button>
+      )}
       {showThoughts && trace && (
         <ol className="mt-2 space-y-1 rounded-md bg-paper p-2 text-xs text-muted">
           {trace.thoughts.map((t, i) => (
@@ -644,6 +670,7 @@ function Observations({ plan }: { plan: Plan }) {
 
 /** Rounds of Argon watching its own render, with the cut points it adjusted. */
 function VerificationPanel({ plan, bundle }: { plan: Plan; bundle: ProjectBundle }) {
+  const [open, setOpen] = useState(false);
   const job = bundle.jobs.find((j) => j.type === "verify_render" && (j.status === "queued" || j.status === "running") && plan.renders.some((r) => r.id === j.payload.renderId));
   const rerender = bundle.jobs.find((j) => j.type === "render_preview" && (j.status === "queued" || j.status === "running") && Number(j.payload.verifyRound ?? 1) > 1 && plan.renders.some((r) => r.id === j.payload.renderId));
   const rounds = plan.verifications;
@@ -666,9 +693,25 @@ function VerificationPanel({ plan, bundle }: { plan: Plan; bundle: ProjectBundle
             <Spinner /> {job ? job.stage : `Re-rendering with Argon's fixes (round ${rerender!.payload.verifyRound})`}…
           </span>
         )}
-        <span className="ml-auto text-xs text-faint">Argon watches its own render next to your original and fixes cut points until every check passes.</span>
+        {rounds.length > 0 && (
+          <button onClick={() => setOpen((o) => !o)} className="ml-auto text-xs font-medium text-accent hover:underline">
+            {open ? "Hide rounds" : `See all ${rounds.length} rounds`}
+          </button>
+        )}
       </div>
-      <ol className="mt-3 space-y-3">
+      <p className="mt-1 text-sm text-muted">
+        Argon rendered the cut, watched it next to your original, and fixed {rounds.reduce((n, v) => n + v.adjustments.length, 0)} cut points across {rounds.length} rounds.
+      </p>
+      {latest && (
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {latest.checks.map((c, i) => (
+            <li key={i} className={`rounded-full px-2.5 py-1 text-xs font-medium ${c.passed ? "bg-add text-add-ink" : "bg-del text-del-ink"}`}>
+              {c.passed ? "✓" : "✗"} {c.name}
+            </li>
+          ))}
+        </ul>
+      )}
+      {open && <ol className="mt-4 space-y-3">
         {rounds.map((v, i) => (
           <li key={v.id} className="rounded-md border border-line p-3 text-sm">
             <p className="mb-1.5 text-xs font-medium text-muted">
@@ -699,7 +742,7 @@ function VerificationPanel({ plan, bundle }: { plan: Plan; bundle: ProjectBundle
             )}
           </li>
         ))}
-      </ol>
+      </ol>}
     </Card>
   );
 }
