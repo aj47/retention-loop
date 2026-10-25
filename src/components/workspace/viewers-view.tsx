@@ -9,6 +9,7 @@ import type { Finding, RetentionCurve } from "@/lib/projects/service";
 import { Badge, Button, Card, ErrorNote, ModelTag } from "../ui";
 import { ReviewPanel } from "../review-panel";
 import { RetentionChart } from "./retention-chart";
+import { WhyChart } from "./why-chart";
 import type { WorkspaceProps } from "./workspace";
 
 type ProposedLesson = ViewerRead["proposedLessons"][number];
@@ -66,6 +67,10 @@ export function ViewersView({ bundle, reload, go }: WorkspaceProps) {
           }}
           pid={pid}
         />
+      )}
+
+      {!importing && bundle.project.youtubeVideoId && curve && analysis && (
+        <WhyChart videoId={bundle.project.youtubeVideoId} ratios={analysis.ratios} values={analysis.smoothed} durationSeconds={curve.durationSeconds} />
       )}
 
       {!importing && bundle.project.youtubeVideoId && (

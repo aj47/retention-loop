@@ -13,7 +13,11 @@ export const GET = route(async (req) => {
   const jobs = (await d.select().from(schema.jobs).where(eq(schema.jobs.type, "review_panel")).orderBy(desc(schema.jobs.createdAt)).limit(20)).filter(
     (j) => j.payload.targetId === target,
   );
-  return { personas: PERSONAS.map(({ instruction: _i, ...p }) => (void _i, p)), reviews: await latestPanel(target), job: jobs[0] ?? null };
+  return {
+    personas: PERSONAS.map(({ instruction: _i, ...p }) => (void _i, p)),
+    reviews: (await latestPanel(target)).filter((r) => r.persona !== "callouts"),
+    job: jobs[0] ?? null,
+  };
 });
 
 export const POST = route(async (req) => {

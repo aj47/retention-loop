@@ -226,5 +226,45 @@ export async function latestPanel(targetId: string) {
   const rows = await d.select().from(schema.reviews).where(and(eq(schema.reviews.targetId, targetId))).orderBy(desc(schema.reviews.createdAt));
   const latest = new Map<string, (typeof rows)[number]>();
   for (const r of rows) if (!latest.has(r.persona)) latest.set(r.persona, r);
+  // A new panel run invalidates callouts derived from an older one.
+  const callouts = latest.get("callouts");
+  const consensus = latest.get("consensus");
+  if (callouts && consensus && callouts.createdAt < consensus.createdAt) latest.delete("callouts");
   return [...latest.values()];
+}
+
+const CalloutsSchema = z.object({
+  callouts: z
+    .array(
+      z.object({
+        atSeconds: z.number().describe("Time in the video where the problem is on screen"),
+        label: z.string().describe("What happened on screen, at most 6 words, e.g. 'Agenda slide instead of the demo'"),
+        reason: z.string().describe("Why viewers left, at most 14 words, plain language"),
+        raisedBy: z.array(z.string()).describe("Reviewer first names who raised it"),
+      }),
+    )
+    .describe("The 3 or 4 moments that best explain where viewers left, in time order"),
+});
+export type Callouts = z.infer<typeof CalloutsSchema>;
+
+/** Short, labeled "this is why you lost viewers here" callouts drawn from a panel's reviews of a published video. Cached. */
+export async function whyCallouts(videoId: string): Promise<Callouts | null> {
+  const d = await db();
+  const rows = await latestPanel(videoId);
+  const cached = rows.find((r) => r.persona === "callouts");
+  if (cached?.result) return cached.result as Callouts;
+  const reviews = rows.filter((r) => r.status === "done" && r.persona !== "callouts" && r.result);
+  if (!reviews.length) return null;
+  const [video] = await d.select().from(schema.youtubeVideos).where(eq(schema.youtubeVideos.id, videoId));
+  const r = await structured({
+    schema: CalloutsSchema,
+    system: "You label a retention chart for a YouTube creator. Each label must point at a concrete on-screen moment the reviewers named. Be short and plain.",
+    input: `Video: "${video?.title ?? videoId}" (${formatClock(video?.durationSeconds ?? 0)})\n\n${reviews
+      .map((x) => `<review by="${PERSONAS.find((p) => p.id === x.persona)?.name ?? x.persona}">${JSON.stringify(x.result)}</review>`)
+      .join("\n")}`,
+    thinking: "low",
+  });
+  const projectId = reviews[0].projectId;
+  await d.insert(schema.reviews).values({ id: newId("rev"), projectId, targetType: "video", targetId: videoId, persona: "callouts", status: "done", result: r.data });
+  return r.data;
 }

@@ -29,3 +29,32 @@ body {
 .prose-script p + p {
   margin-top: 0.9em;
 }
+
+/* "Why viewers left": callouts and their links appear one after another. */
+@keyframes why-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes why-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.why-callout {
+  opacity: 0;
+  animation: why-in 0.5s ease-out forwards;
+}
+.why-link,
+.why-dot {
+  opacity: 0;
+  animation: why-fade 0.4s ease-out forwards;
+}
