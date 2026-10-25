@@ -89,9 +89,11 @@ export function transcriber(): Transcriber {
 }
 
 /** Transcribes with a local Whisper. Returns null when no transcriber is available. */
-export async function transcribe(file: string): Promise<Transcript | null> {
+export async function transcribe(file: string, durationSeconds?: number): Promise<Transcript | null> {
   const t = transcriber();
   if (!t) return null;
+  // Short clips get the fast English model unless a model was chosen explicitly.
+  if (t.kind === "whisper" && !process.env.RL_WHISPER_MODEL && durationSeconds && durationSeconds < 300) t.model = "tiny.en";
   const dir = await mkdtemp(path.join(tmpdir(), "rl-asr-"));
   try {
     const wav = path.join(dir, "audio.wav");

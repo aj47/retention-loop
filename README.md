@@ -2,7 +2,16 @@
 
 An AI Director for YouTube creators, powered by **Gemini 4 Argon**. It watches your published videos next to their real audience-retention curves, learns what your viewers respond to, and turns that into concrete changes: a better angle, a payoff-first script, and a playable recut of your own footage that it checks by watching it.
 
-Built for the *Build with Gemini 4 Argon* hackathon. The product spec is in [docs/spec.md](docs/spec.md).
+Built for the Gemini 4 Argon SF Hackathon (Cerebral Valley × Google DeepMind), **Problem Statement Two: More Dimensions**. Retention Loop renders the cut it proposed, watches the result, critiques it against the goal, and fixes it in a loop.
+
+## Built during the hackathon (October 25, 2026)
+
+All code in this repository was written during the event: the app, the Gemini 4 Argon director, the render → watch → fix loop, channel memory, and the YouTube Analytics sync. Things that existed before and are only used:
+
+- The product spec in [docs/spec.md](docs/spec.md), written before the event.
+- A local read-only YouTube Analytics OAuth token for the @techfren channel (`yt-analytics.readonly`), which the app reads from `~/.config/youtube-analytics-readonly`.
+- Open-source tools: FFmpeg, yt-dlp, OpenAI Whisper, Next.js, PGlite, Drizzle.
+- The demo footage is the creator's own published video.
 
 ## What Gemini 4 Argon does here
 

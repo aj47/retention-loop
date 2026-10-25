@@ -176,9 +176,16 @@ Turn this approved script into a shot plan. Every shot quotes the exact script p
 const transcriptText = (t: Transcript) => t.segments.map((s) => `[${s.start.toFixed(1)}–${s.end.toFixed(1)}] ${s.text.trim()}`).join("\n");
 
 /** Video part for a model call: agentic processing lets the model navigate the timeline itself. */
-export function videoPart(uri: string, mimeType?: string): InputPart {
-  return { type: "video", uri, ...(mimeType ? { mime_type: mimeType } : {}), processing: "agentic" };
+export function videoPart(uri: string, mimeType?: string, processing: "agentic" | "static" = "agentic"): InputPart {
+  return { type: "video", uri, ...(mimeType ? { mime_type: mimeType } : {}), processing };
 }
+
+/**
+ * Clips under five minutes are cheaper and faster to read in one static pass
+ * (Google's guidance); longer videos use agentic navigation of the timeline.
+ */
+export const SHORT_VIDEO_SECONDS = 300;
+export const processingFor = (durationSeconds: number) => (durationSeconds < SHORT_VIDEO_SECONDS ? "static" : "agentic");
 
 export async function proposeEdit(
   input: { transcript: Transcript | null; silences: TimeRange[]; duration: number; script?: string; request?: string; video?: InputPart },
@@ -209,7 +216,7 @@ Propose a better cut of this video using its existing footage. Rules:
 - Cut on sentence boundaries so speech is not clipped, and avoid cutting in the middle of an on-screen action. Keep moved segments self-contained (a complete thought).
 - Preserve necessary technical explanation; prefer moving it later over deleting it.
 - Times are seconds in the source video.${input.script ? "\n- Use the intended script to note scenes that were omitted, moved, or promises left unresolved in continuity." : ""}`;
-  const r = await callWithVideo(EditProposalSchema, prompt, input.video, "high");
+  const r = await callWithVideo(EditProposalSchema, prompt, input.video, input.duration < SHORT_VIDEO_SECONDS ? "medium" : "high");
   return { data: r.data, model: r.model, interactionId: r.interactionId, trace: r.trace };
 }
 
@@ -235,6 +242,7 @@ export async function verifyCut(
     timeline: { sourceIn: number; sourceOut: number; outputIn: number; outputOut: number }[];
     knownIssues: string[];
     round: number;
+    durationSeconds: number;
   },
 ): Promise<DirectorResult<Verification>> {
   const prompt = `You are verifying a recut you proposed. The first video is the ORIGINAL; the second is the RENDERED recut assembled from it. This is verification round ${input.round}.
@@ -257,7 +265,8 @@ Watch the rendered recut and check, at minimum:
 5. The recut still makes sense on its own and keeps necessary explanation.
 
 Report each check with evidence. For failures that can be fixed by moving a cut point, give the smallest fix in SOURCE seconds. Do not propose fixes for checks that passed.`;
-  const r = await structured({ schema: VerificationSchema, system: SYSTEM, input: [input.original, input.render, { type: "text", text: prompt }], thinking: "high", background: true });
+  const thinking = input.durationSeconds < SHORT_VIDEO_SECONDS ? "medium" : "high";
+  const r = await structured({ schema: VerificationSchema, system: SYSTEM, input: [input.original, input.render, { type: "text", text: prompt }], thinking, background: true });
   return { data: r.data, model: r.model, interactionId: r.interactionId, trace: r.trace };
 }
 

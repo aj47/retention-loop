@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { body, directorContext, HttpError, notFound, route } from "@/lib/api";
 import { db, schema } from "@/lib/db";
-import { proposeEdit, videoPart } from "@/lib/director";
+import { processingFor, proposeEdit, videoPart } from "@/lib/director";
 import { directorMode } from "@/lib/director/model";
 import { ensureGeminiFile } from "@/lib/jobs/handlers";
 import { createPlanFromProposal, requestRender } from "@/lib/edit/service";
@@ -25,7 +25,7 @@ export const POST = route<Ctx>(async (req, { params }) => {
   const file = directorMode() === "gemini" && asset.probe.hasVideo ? await ensureGeminiFile(asset.id) : null;
   const result = await proposeEdit(
     {
-      video: file ? videoPart(file.uri, file.mimeType) : undefined,
+      video: file ? videoPart(file.uri, file.mimeType, processingFor(asset.probe.duration)) : undefined,
       transcript: asset.transcript,
       silences: asset.silences ?? [],
       duration: asset.probe.duration,

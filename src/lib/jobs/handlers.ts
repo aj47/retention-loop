@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import path from "node:path";
 import { db, schema } from "@/lib/db";
 import type { VerificationAdjustment } from "@/lib/db/schema";
-import { verifyCut, videoPart } from "@/lib/director";
+import { processingFor, verifyCut, videoPart } from "@/lib/director";
 import { isFresh, uploadVideo } from "@/lib/director/files";
 import { directorMode } from "@/lib/director/model";
 import { timelineWarnings } from "@/lib/edit/continuity";
@@ -44,21 +44,19 @@ export async function prepareMedia(assetId: string, stage: (s: string) => Promis
   await d.update(schema.sourceAssets).set({ probe: info }).where(eq(schema.sourceAssets.id, assetId));
   await makeProxy(asset.path, proxyPath(assetId), info);
 
-  if (directorMode() === "gemini" && info.hasVideo) {
-    await stage("Sending video to Gemini 4 Argon");
-    await ensureGeminiFile(assetId);
-  }
-
+  // The Gemini upload and local audio analysis are independent; run them together.
+  const upload = directorMode() === "gemini" && info.hasVideo ? ensureGeminiFile(assetId) : Promise.resolve(null);
   let silences = asset.silences ?? [];
   if (info.hasAudio) {
-    await stage("Analyzing audio");
+    await stage("Sending video to Gemini 4 Argon · analyzing audio");
     silences = await detectSilences(asset.path);
     await d.update(schema.sourceAssets).set({ silences }).where(eq(schema.sourceAssets.id, assetId));
 
-    await stage("Transcribing");
-    const transcript = await transcribe(asset.path);
+    await stage("Sending video to Gemini 4 Argon · transcribing");
+    const transcript = await transcribe(asset.path, info.duration);
     await d.update(schema.sourceAssets).set({ transcript }).where(eq(schema.sourceAssets.id, assetId));
   }
+  await upload;
   await logEvent(asset.projectId, "video.prepared", { assetId, duration: info.duration });
   return { duration: info.duration, silences: silences.length };
 }
@@ -100,14 +98,16 @@ export async function verifyRender(renderId: string, round: number, stage: (s: s
   const original = await ensureGeminiFile(asset.id);
   const rendered = await uploadVideo(render.path);
   const applied = operations.filter((o) => render.operationIds.includes(o.id));
+  const mode = processingFor(asset.probe!.duration);
   const result = await verifyCut({
-    original: videoPart(original.uri, original.mimeType),
-    render: videoPart(rendered.uri, rendered.mimeType),
+    original: videoPart(original.uri, original.mimeType, mode),
+    render: videoPart(rendered.uri, rendered.mimeType, mode),
     treatment: plan.treatment,
     operations: applied.map((o, index) => ({ index, type: o.type, title: o.title, sourceIn: o.sourceIn, sourceOut: o.sourceOut, targetAt: o.targetAt })),
     timeline: render.timeline,
     knownIssues: timelineWarnings(render.timeline, asset.transcript, asset.silences ?? [], asset.probe!.duration),
     round,
+    durationSeconds: asset.probe!.duration,
   });
 
   const passed = result.data.checks.every((c) => c.passed);
