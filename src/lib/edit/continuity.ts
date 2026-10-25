@@ -30,20 +30,21 @@ export function timelineWarnings(segments: TimelineSegmentMap[], transcript: Tra
   return [...cutWarnings([...cuts], transcript, silences, duration).values()];
 }
 
-/** Snaps a time to the nearest transcript boundary or pause edge within `window` seconds. */
-export function snapToBoundary(t: number, transcript: Transcript | null, silences: TimeRange[], window = 0.75): number {
-  const candidates = [
-    ...(transcript?.segments.flatMap((s) => [s.start, s.end]) ?? []),
-    ...silences.map((s) => (s.start + s.end) / 2),
-  ];
-  let best = t;
-  let dist = window;
-  for (const c of candidates) {
-    const d = Math.abs(c - t);
-    if (d < dist) {
-      dist = d;
-      best = c;
-    }
-  }
-  return Math.round(best * 1000) / 1000;
+/**
+ * Moves a cut point onto the nearest clean place to cut: the middle of a
+ * detected pause if one is within `window` seconds (silence is reliable even
+ * when transcript timings are fuzzy), otherwise the nearest transcript
+ * segment boundary.
+ */
+export function snapToBoundary(t: number, transcript: Transcript | null, silences: TimeRange[], window = 1.0): number {
+  const nearest = (candidates: number[], within: number) => {
+    let best: number | null = null;
+    for (const c of candidates) if (Math.abs(c - t) <= within && (best == null || Math.abs(c - t) < Math.abs(best - t))) best = c;
+    return best;
+  };
+  const inPause = silences.find((s) => t >= s.start && t <= s.end);
+  if (inPause) return Math.round(t * 1000) / 1000;
+  const pause = nearest(silences.filter((s) => s.end - s.start >= 0.15).map((s) => (s.start + s.end) / 2), window);
+  const boundary = pause ?? nearest(transcript?.segments.flatMap((s) => [s.start, s.end]) ?? [], window * 0.75);
+  return Math.round((boundary ?? t) * 1000) / 1000;
 }

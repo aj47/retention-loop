@@ -5,7 +5,7 @@ import type { VerificationAdjustment } from "@/lib/db/schema";
 import { processingFor, verifyCut, videoPart } from "@/lib/director";
 import { isFresh, uploadVideo } from "@/lib/director/files";
 import { directorMode } from "@/lib/director/model";
-import { timelineWarnings } from "@/lib/edit/continuity";
+import { snapToBoundary, timelineWarnings } from "@/lib/edit/continuity";
 import { requestRender } from "@/lib/edit/service";
 import { newId } from "@/lib/ids";
 import { detectSilences, makeProxy, probe, renderTimeline, transcribe } from "@/lib/media/ffmpeg";
@@ -116,11 +116,13 @@ export async function verifyRender(renderId: string, round: number, stage: (s: s
     for (const fix of result.data.fixes) {
       const op = applied[fix.operationIndex];
       if (!op || op.executability !== "direct" || fix.value < 0 || fix.value > asset.probe!.duration) continue;
-      if (Math.abs((op[fix.field] ?? -1) - fix.value) < 0.05) continue;
-      adjustments.push({ operationId: op.id, field: fix.field, from: op[fix.field], to: Math.round(fix.value * 100) / 100, reason: fix.reason });
+      // Argon picks the moment; the cut lands in the nearest pause so speech is not clipped.
+      const value = Math.round(snapToBoundary(fix.value, asset.transcript, asset.silences ?? [], 0.6) * 100) / 100;
+      if (Math.abs((op[fix.field] ?? -1) - value) < 0.05) continue;
+      adjustments.push({ operationId: op.id, field: fix.field, from: op[fix.field], to: value, reason: fix.reason });
       await d
         .update(schema.editOperations)
-        .set({ [fix.field]: Math.round(fix.value * 100) / 100, warnings: [...op.warnings.filter((w) => !w.startsWith("Adjusted by Argon")), `Adjusted by Argon in verification round ${round}: ${fix.reason}`] })
+        .set({ [fix.field]: value, warnings: [...op.warnings.filter((w) => !w.startsWith("Adjusted by Argon")), `Adjusted by Argon in verification round ${round}: ${fix.reason}`] })
         .where(eq(schema.editOperations.id, op.id));
     }
   }

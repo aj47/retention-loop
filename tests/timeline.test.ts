@@ -73,3 +73,18 @@ describe("compileTimeline", () => {
     expect(t.skipped).toEqual([{ id: "m2", reason: "Overlaps another moved segment" }]);
   });
 });
+
+import { snapToBoundary } from "@/lib/edit/continuity";
+
+describe("snapToBoundary", () => {
+  const transcript = { engine: "test", segments: [{ start: 0, end: 4.9, text: "a" }, { start: 5.4, end: 9, text: "b" }] };
+  it("prefers the middle of a nearby pause over a fuzzy transcript boundary", () => {
+    expect(snapToBoundary(4.6, transcript, [{ start: 4.95, end: 5.35 }])).toBe(5.15);
+  });
+  it("keeps a cut that is already inside a pause", () => {
+    expect(snapToBoundary(5.0, transcript, [{ start: 4.95, end: 5.35 }])).toBe(5);
+  });
+  it("falls back to transcript boundaries without pauses", () => {
+    expect(snapToBoundary(5.2, transcript, [])).toBe(5.4);
+  });
+});
